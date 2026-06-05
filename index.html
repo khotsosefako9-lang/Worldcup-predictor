@@ -1,0 +1,477 @@
+import { useState, useMemo } from "react";
+
+const GROUPS_DATA = {
+  A: [
+    { name: "Mexico", flag: "🇲🇽" },
+    { name: "South Africa", flag: "🇿🇦" },
+    { name: "South Korea", flag: "🇰🇷" },
+    { name: "Czech Republic", flag: "🇨🇿" },
+  ],
+  B: [
+    { name: "Canada", flag: "🇨🇦" },
+    { name: "Bosnia & Herzegovina", flag: "🇧🇦" },
+    { name: "Qatar", flag: "🇶🇦" },
+    { name: "Switzerland", flag: "🇨🇭" },
+  ],
+  C: [
+    { name: "Brazil", flag: "🇧🇷" },
+    { name: "Morocco", flag: "🇲🇦" },
+    { name: "Haiti", flag: "🇭🇹" },
+    { name: "Scotland", flag: "🏴󠁧󠁢󠁳󠁣󠁴󠁿" },
+  ],
+  D: [
+    { name: "USA", flag: "🇺🇸" },
+    { name: "Paraguay", flag: "🇵🇾" },
+    { name: "Australia", flag: "🇦🇺" },
+    { name: "Turkey", flag: "🇹🇷" },
+  ],
+  E: [
+    { name: "Germany", flag: "🇩🇪" },
+    { name: "Curaçao", flag: "🇨🇼" },
+    { name: "Ivory Coast", flag: "🇨🇮" },
+    { name: "Ecuador", flag: "🇪🇨" },
+  ],
+  F: [
+    { name: "Netherlands", flag: "🇳🇱" },
+    { name: "Japan", flag: "🇯🇵" },
+    { name: "Sweden", flag: "🇸🇪" },
+    { name: "Tunisia", flag: "🇹🇳" },
+  ],
+  G: [
+    { name: "Belgium", flag: "🇧🇪" },
+    { name: "Egypt", flag: "🇪🇬" },
+    { name: "Iran", flag: "🇮🇷" },
+    { name: "New Zealand", flag: "🇳🇿" },
+  ],
+  H: [
+    { name: "Spain", flag: "🇪🇸" },
+    { name: "Cape Verde", flag: "🇨🇻" },
+    { name: "Saudi Arabia", flag: "🇸🇦" },
+    { name: "Uruguay", flag: "🇺🇾" },
+  ],
+  I: [
+    { name: "France", flag: "🇫🇷" },
+    { name: "Senegal", flag: "🇸🇳" },
+    { name: "Iraq", flag: "🇮🇶" },
+    { name: "Norway", flag: "🇳🇴" },
+  ],
+  J: [
+    { name: "Argentina", flag: "🇦🇷" },
+    { name: "Algeria", flag: "🇩🇿" },
+    { name: "Austria", flag: "🇦🇹" },
+    { name: "Jordan", flag: "🇯🇴" },
+  ],
+  K: [
+    { name: "Portugal", flag: "🇵🇹" },
+    { name: "DR Congo", flag: "🇨🇩" },
+    { name: "Uzbekistan", flag: "🇺🇿" },
+    { name: "Colombia", flag: "🇨🇴" },
+  ],
+  L: [
+    { name: "England", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
+    { name: "Croatia", flag: "🇭🇷" },
+    { name: "Ghana", flag: "🇬🇭" },
+    { name: "Panama", flag: "🇵🇦" },
+  ],
+};
+
+function generateGroupMatches(groupId, teams) {
+  const matches = [];
+  for (let i = 0; i < teams.length; i++) {
+    for (let j = i + 1; j < teams.length; j++) {
+      matches.push({
+        id: `${groupId}-${i}-${j}`,
+        home: teams[i].name,
+        away: teams[j].name,
+        homeScore: "",
+        awayScore: "",
+      });
+    }
+  }
+  return matches;
+}
+
+function computeStandings(teams, matches) {
+  const stats = {};
+  teams.forEach((t) => {
+    stats[t.name] = { name: t.name, flag: t.flag, mp: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+  });
+  matches.forEach((m) => {
+    const hs = parseInt(m.homeScore);
+    const as = parseInt(m.awayScore);
+    if (isNaN(hs) || isNaN(as)) return;
+    const h = stats[m.home];
+    const a = stats[m.away];
+    h.mp++; h.gf += hs; h.ga += as; h.gd += hs - as;
+    a.mp++; a.gf += as; a.ga += hs; a.gd += as - hs;
+    if (hs > as) { h.w++; h.pts += 3; a.l++; }
+    else if (hs < as) { a.w++; a.pts += 3; h.l++; }
+    else { h.d++; h.pts += 1; a.d++; a.pts += 1; }
+  });
+  return Object.values(stats).sort((a, b) =>
+    b.pts - a.pts || b.gd - a.gd || b.gf - a.gf || a.name.localeCompare(b.name)
+  );
+}
+
+export default function WorldCupPredictor() {
+  const [view, setView] = useState("groups");
+  const [selectedGroup, setSelectedGroup] = useState("A");
+  const [groupMatches, setGroupMatches] = useState(() => {
+    const m = {};
+    Object.entries(GROUPS_DATA).forEach(([g, teams]) => { m[g] = generateGroupMatches(g, teams); });
+    return m;
+  });
+  const [knockoutResults, setKnockoutResults] = useState({});
+
+  const allStandings = useMemo(() => {
+    const s = {};
+    Object.entries(GROUPS_DATA).forEach(([g, teams]) => { s[g] = computeStandings(teams, groupMatches[g]); });
+    return s;
+  }, [groupMatches]);
+
+  const qualifiedTeams = useMemo(() => {
+    const thirds = [];
+    const q = {};
+    Object.entries(allStandings).forEach(([g, standings]) => {
+      q[g] = standings.slice(0, 2).map((t) => ({ ...t, group: g }));
+      if (standings[2]) thirds.push({ ...standings[2], group: g });
+    });
+    thirds.sort((a, b) => b.pts - a.pts || b.gd - a.gd || b.gf - a.gf);
+    q["3rd"] = thirds.slice(0, 8);
+    return q;
+  }, [allStandings]);
+
+  const r32Teams = useMemo(() => {
+    const teams = [];
+    "ABCDEFGHIJKL".split("").forEach((g) => {
+      if (qualifiedTeams[g]) teams.push(...qualifiedTeams[g]);
+    });
+    const thirds = qualifiedTeams["3rd"] || [];
+    teams.push(...thirds.slice(0, 8));
+    while (teams.length < 32) teams.push({ name: "TBD", flag: "❓" });
+    return teams.slice(0, 32);
+  }, [qualifiedTeams]);
+
+  const r32Matchups = useMemo(() => {
+    const pairs = [];
+    for (let i = 0; i < 32; i += 2) pairs.push({ home: r32Teams[i], away: r32Teams[i + 1] });
+    return pairs;
+  }, [r32Teams]);
+
+  function setMatchScore(group, matchId, side, value) {
+    setGroupMatches((prev) => ({
+      ...prev,
+      [group]: prev[group].map((m) =>
+        m.id === matchId ? { ...m, [side === "home" ? "homeScore" : "awayScore"]: value } : m
+      ),
+    }));
+  }
+
+  function setKnockoutWinner(round, matchIndex, winner) {
+    setKnockoutResults((prev) => ({
+      ...prev,
+      [round]: { ...(prev[round] || {}), [matchIndex]: winner },
+    }));
+  }
+
+  const knockoutRounds = useMemo(() => {
+    const rounds = [];
+    const r32 = r32Matchups.map((m, i) => ({
+      home: m.home, away: m.away,
+      winner: knockoutResults["R32"]?.[i] || null,
+    }));
+    rounds.push({ label: "Round of 32", key: "R32", matches: r32 });
+
+    const r16 = [];
+    for (let i = 0; i < 16; i += 2) {
+      r16.push({
+        home: r32[i]?.winner || { name: "TBD", flag: "❓" },
+        away: r32[i + 1]?.winner || { name: "TBD", flag: "❓" },
+        winner: knockoutResults["R16"]?.[Math.floor(i / 2)] || null,
+      });
+    }
+    rounds.push({ label: "Round of 16", key: "R16", matches: r16 });
+
+    const qf = [];
+    for (let i = 0; i < 8; i += 2) {
+      qf.push({
+        home: r16[i]?.winner || { name: "TBD", flag: "❓" },
+        away: r16[i + 1]?.winner || { name: "TBD", flag: "❓" },
+        winner: knockoutResults["QF"]?.[Math.floor(i / 2)] || null,
+      });
+    }
+    rounds.push({ label: "Quarter Finals", key: "QF", matches: qf });
+
+    const sf = [];
+    for (let i = 0; i < 4; i += 2) {
+      sf.push({
+        home: qf[i]?.winner || { name: "TBD", flag: "❓" },
+        away: qf[i + 1]?.winner || { name: "TBD", flag: "❓" },
+        winner: knockoutResults["SF"]?.[Math.floor(i / 2)] || null,
+      });
+    }
+    rounds.push({ label: "Semi Finals", key: "SF", matches: sf });
+
+    rounds.push({
+      label: "The Final", key: "FINAL",
+      matches: [{
+        home: sf[0]?.winner || { name: "TBD", flag: "❓" },
+        away: sf[1]?.winner || { name: "TBD", flag: "❓" },
+        winner: knockoutResults["FINAL"]?.[0] || null,
+      }],
+    });
+    return rounds;
+  }, [r32Matchups, knockoutResults]);
+
+  const champion = knockoutRounds[4]?.matches[0]?.winner;
+
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg, #0a1628 0%, #0d2137 40%, #091420 100%)", fontFamily: "'Bebas Neue', 'Impact', sans-serif", color: "#f0f0f0" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0a1628; } ::-webkit-scrollbar-thumb { background: #B8860B; border-radius: 3px; }
+        .btn-tab { background: transparent; border: 1px solid rgba(184,134,11,0.3); color: #aaa; padding: 10px 22px; cursor: pointer; font-family: 'Bebas Neue', sans-serif; font-size: 15px; letter-spacing: 2px; border-radius: 2px; transition: all 0.2s; }
+        .btn-tab:hover { border-color: #DAA520; color: #DAA520; }
+        .btn-tab.active { background: #B8860B; color: #000; border-color: #DAA520; }
+        .group-btn { background: transparent; border: 1px solid rgba(184,134,11,0.3); color: #999; padding: 7px 16px; cursor: pointer; font-family: 'Bebas Neue', sans-serif; font-size: 16px; letter-spacing: 2px; border-radius: 2px; transition: all 0.2s; }
+        .group-btn:hover { border-color: #DAA520; color: #fff; }
+        .group-btn.active { background: linear-gradient(135deg, #B8860B, #DAA520); color: #000; border-color: #DAA520; }
+        .score-input { width: 44px; background: rgba(255,255,255,0.08); border: 1px solid rgba(184,134,11,0.4); color: #fff; text-align: center; padding: 5px; font-size: 16px; font-family: 'Barlow', sans-serif; font-weight: 600; border-radius: 3px; outline: none; }
+        .score-input:focus { border-color: #DAA520; background: rgba(218,165,32,0.1); }
+        .match-row { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.03); border: 1px solid rgba(184,134,11,0.12); border-radius: 6px; padding: 10px 14px; margin-bottom: 8px; transition: all 0.2s; }
+        .match-row:hover { background: rgba(184,134,11,0.06); border-color: rgba(184,134,11,0.3); }
+        .standing-row { display: grid; grid-template-columns: 24px 1fr 32px 32px 32px 32px 38px 38px 38px 42px; gap: 4px; align-items: center; padding: 8px 12px; font-family: 'Barlow', sans-serif; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .standing-header { color: rgba(218,165,32,0.7); font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+        .ko-match { background: rgba(255,255,255,0.03); border: 1px solid rgba(184,134,11,0.2); border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+        .ko-match:hover { border-color: rgba(218,165,32,0.5); background: rgba(184,134,11,0.06); }
+        .ko-match.winner-set { border-color: rgba(218,165,32,0.6); }
+        .ko-team { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-family: 'Barlow', sans-serif; font-size: 13px; border-radius: 3px; cursor: pointer; transition: all 0.2s; }
+        .ko-team:hover { background: rgba(184,134,11,0.15); }
+        .ko-team.is-winner { background: rgba(218,165,32,0.2); color: #DAA520; font-weight: 700; }
+        .ko-team.is-loser { opacity: 0.35; }
+        .section-title { font-family: 'Bebas Neue', sans-serif; letter-spacing: 3px; color: #DAA520; }
+        .trophy-glow { animation: glow 2s ease-in-out infinite alternate; }
+        @keyframes glow { from { text-shadow: 0 0 20px #DAA520, 0 0 40px #B8860B; } to { text-shadow: 0 0 40px #DAA520, 0 0 80px #FFD700, 0 0 120px #DAA520; } }
+      `}</style>
+
+      {/* HEADER */}
+      <div style={{ background: "linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%)", padding: "28px 24px 20px", textAlign: "center", borderBottom: "1px solid rgba(184,134,11,0.25)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+          <span style={{ fontSize: 36 }}>⚽</span>
+          <div>
+            <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 38, letterSpacing: 8, background: "linear-gradient(90deg, #B8860B, #FFD700, #DAA520)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              FIFA WORLD CUP 2026
+            </div>
+            <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 12, letterSpacing: 4, color: "rgba(218,165,32,0.6)", textTransform: "uppercase" }}>
+              USA · Canada · Mexico — Prediction Tracker
+            </div>
+          </div>
+          <span style={{ fontSize: 36 }}>🏆</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 20 }}>
+          {[{ key: "groups", label: "⚽ Group Stage" }, { key: "bracket", label: "🏟 Knockout Bracket" }, { key: "roadmap", label: "🗺 Roadmap" }].map((tab) => (
+            <button key={tab.key} className={`btn-tab ${view === tab.key ? "active" : ""}`} onClick={() => setView(tab.key)}>{tab.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* GROUP STAGE */}
+      {view === "groups" && (
+        <div style={{ padding: "20px 16px", maxWidth: 920, margin: "0 auto" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 24, justifyContent: "center" }}>
+            {"ABCDEFGHIJKL".split("").map((g) => (
+              <button key={g} className={`group-btn ${selectedGroup === g ? "active" : ""}`} onClick={() => setSelectedGroup(g)}>Group {g}</button>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            {/* Standings */}
+            <div>
+              <div style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 10 }}>
+                <div className="section-title" style={{ fontSize: 22 }}>GROUP {selectedGroup}</div>
+                <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 12, color: "rgba(218,165,32,0.5)", letterSpacing: 1 }}>STANDINGS</div>
+              </div>
+              <div style={{ background: "rgba(0,0,0,0.3)", border: "1px solid rgba(184,134,11,0.2)", borderRadius: 8, overflow: "hidden" }}>
+                <div className="standing-row standing-header">
+                  <span>#</span><span>Team</span><span>MP</span><span>W</span><span>D</span><span>L</span><span>GF</span><span>GA</span><span>GD</span><span style={{ color: "#DAA520" }}>PTS</span>
+                </div>
+                {allStandings[selectedGroup].map((team, i) => (
+                  <div key={team.name} className="standing-row" style={{ background: i < 2 ? "rgba(184,134,11,0.06)" : "transparent" }}>
+                    <span style={{ color: i < 2 ? "#DAA520" : "#555", fontSize: 11 }}>{i + 1}</span>
+                    <span style={{ fontFamily: "'Barlow', sans-serif", fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>
+                      <span>{team.flag}</span>
+                      <span style={{ color: i < 2 ? "#fff" : "#aaa" }}>{team.name}</span>
+                      {i === 0 && <span style={{ fontSize: 9, padding: "2px 5px", background: "rgba(218,165,32,0.2)", color: "#DAA520", border: "1px solid rgba(218,165,32,0.4)", borderRadius: 2, fontFamily: "'Barlow', sans-serif", fontWeight: 700, letterSpacing: 1 }}>1ST</span>}
+                      {i === 1 && <span style={{ fontSize: 9, padding: "2px 5px", background: "rgba(100,149,237,0.15)", color: "#6495ED", border: "1px solid rgba(100,149,237,0.35)", borderRadius: 2, fontFamily: "'Barlow', sans-serif", fontWeight: 700, letterSpacing: 1 }}>2ND</span>}
+                    </span>
+                    <span style={{ color: "#aaa" }}>{team.mp}</span>
+                    <span style={{ color: "#4ade80" }}>{team.w}</span>
+                    <span style={{ color: "#facc15" }}>{team.d}</span>
+                    <span style={{ color: "#f87171" }}>{team.l}</span>
+                    <span>{team.gf}</span>
+                    <span>{team.ga}</span>
+                    <span style={{ color: team.gd > 0 ? "#4ade80" : team.gd < 0 ? "#f87171" : "#aaa" }}>{team.gd > 0 ? "+" : ""}{team.gd}</span>
+                    <span style={{ fontWeight: 700, color: "#DAA520" }}>{team.pts}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop: 8, fontFamily: "'Barlow', sans-serif", fontSize: 11, color: "#555" }}>
+                Top 2 advance · Best 8 third-placed also qualify
+              </div>
+            </div>
+
+            {/* Fixtures */}
+            <div>
+              <div style={{ marginBottom: 10 }}>
+                <div className="section-title" style={{ fontSize: 22 }}>FIXTURES</div>
+              </div>
+              {groupMatches[selectedGroup].map((match) => {
+                const homeTeam = GROUPS_DATA[selectedGroup].find((t) => t.name === match.home);
+                const awayTeam = GROUPS_DATA[selectedGroup].find((t) => t.name === match.away);
+                const hs = parseInt(match.homeScore), as2 = parseInt(match.awayScore);
+                const hasResult = !isNaN(hs) && !isNaN(as2);
+                return (
+                  <div key={match.id} className="match-row">
+                    <div style={{ flex: 1, textAlign: "right" }}>
+                      <span style={{ fontFamily: "'Barlow', sans-serif", fontSize: 13, fontWeight: 600, color: hasResult && hs > as2 ? "#DAA520" : "#ddd" }}>
+                        {homeTeam?.flag} {match.home}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px" }}>
+                      <input className="score-input" type="number" min="0" max="20" value={match.homeScore} onChange={(e) => setMatchScore(selectedGroup, match.id, "home", e.target.value)} placeholder="-" />
+                      <span style={{ color: "rgba(218,165,32,0.5)", fontFamily: "'Bebas Neue', sans-serif", fontSize: 16 }}>VS</span>
+                      <input className="score-input" type="number" min="0" max="20" value={match.awayScore} onChange={(e) => setMatchScore(selectedGroup, match.id, "away", e.target.value)} placeholder="-" />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontFamily: "'Barlow', sans-serif", fontSize: 13, fontWeight: 600, color: hasResult && as2 > hs ? "#DAA520" : "#ddd" }}>
+                        {match.away} {awayTeam?.flag}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BRACKET */}
+      {view === "bracket" && (
+        <div style={{ padding: "20px 16px", overflowX: "auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 20 }}>
+            <div className="section-title" style={{ fontSize: 28 }}>KNOCKOUT BRACKET</div>
+            <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 13, color: "rgba(218,165,32,0.5)", marginTop: 4 }}>Click a team to advance them as winner</div>
+          </div>
+          <div style={{ display: "flex", gap: 16, minWidth: 1200, padding: "0 12px" }}>
+            {knockoutRounds.map((round, ri) => (
+              <div key={round.key} style={{ flex: 1, minWidth: round.key === "FINAL" ? 240 : 200 }}>
+                <div style={{ textAlign: "center", marginBottom: 12, fontFamily: "'Bebas Neue', sans-serif", fontSize: 15, letterSpacing: 3, color: "#DAA520", borderBottom: "1px solid rgba(184,134,11,0.3)", paddingBottom: 8 }}>
+                  {round.label}
+                  <div style={{ fontSize: 11, color: "#555", letterSpacing: 1 }}>({round.matches.length} {round.matches.length === 1 ? "match" : "matches"})</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-around", minHeight: `${round.matches.length * 100}px` }}>
+                  {round.matches.map((match, mi) => (
+                    <div key={mi} className={`ko-match ${match.winner ? "winner-set" : ""}`} style={{ flex: round.key === "FINAL" ? "unset" : 1, margin: "4px 0" }}>
+                      {[match.home, match.away].map((team, ti) => {
+                        const isWinner = match.winner?.name === team.name;
+                        const isLoser = match.winner && !isWinner;
+                        const isTBD = team.name === "TBD";
+                        return (
+                          <div key={ti} className={`ko-team ${isWinner ? "is-winner" : ""} ${isLoser ? "is-loser" : ""}`}
+                            onClick={() => { if (!isTBD) setKnockoutWinner(round.key, mi, team); }}
+                            style={{ cursor: isTBD ? "default" : "pointer" }}>
+                            <span style={{ fontSize: 18 }}>{team.flag}</span>
+                            <span style={{ fontSize: 13, fontWeight: isWinner ? 700 : 400 }}>{team.name}</span>
+                            {isWinner && <span style={{ marginLeft: "auto", fontSize: 12 }}>✓</span>}
+                          </div>
+                        );
+                      })}
+                      {match.winner && (
+                        <button onClick={() => setKnockoutWinner(round.key, mi, null)}
+                          style={{ background: "none", border: "none", color: "rgba(218,165,32,0.4)", fontSize: 10, cursor: "pointer", width: "100%", textAlign: "center", marginTop: 4, fontFamily: "'Barlow', sans-serif" }}>
+                          reset
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {champion && (
+            <div style={{ textAlign: "center", marginTop: 30, padding: 24, background: "linear-gradient(135deg, rgba(184,134,11,0.15), rgba(255,215,0,0.08))", border: "1px solid rgba(218,165,32,0.4)", borderRadius: 12, maxWidth: 400, margin: "30px auto 0" }}>
+              <div style={{ fontSize: 48 }} className="trophy-glow">🏆</div>
+              <div className="section-title" style={{ fontSize: 28, marginTop: 8 }}>WORLD CHAMPION</div>
+              <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 36, marginTop: 8 }}>{champion.flag}</div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 32, color: "#FFD700", letterSpacing: 4 }}>{champion.name}</div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ROADMAP */}
+      {view === "roadmap" && (
+        <div style={{ padding: "20px 16px", maxWidth: 960, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 28 }}>
+            <div className="section-title" style={{ fontSize: 28 }}>PATH TO GLORY</div>
+            <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 13, color: "rgba(218,165,32,0.5)", marginTop: 4 }}>Roadmap of predicted winners through each round</div>
+          </div>
+          {knockoutRounds.map((round, ri) => (
+            <div key={round.key} style={{ marginBottom: 24 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "linear-gradient(135deg, #B8860B, #DAA520)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Bebas Neue', sans-serif", fontSize: 16, color: "#000", flexShrink: 0 }}>{ri + 1}</div>
+                <div>
+                  <div className="section-title" style={{ fontSize: 20 }}>{round.label}</div>
+                  <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 11, color: "#555", letterSpacing: 1 }}>{round.matches.length} {round.matches.length === 1 ? "match" : "matches"}</div>
+                </div>
+                <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg, rgba(184,134,11,0.4), transparent)" }} />
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, paddingLeft: 48 }}>
+                {round.matches.map((match, mi) => (
+                  <div key={mi} style={{ background: match.winner ? "rgba(184,134,11,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${match.winner ? "rgba(218,165,32,0.35)" : "rgba(255,255,255,0.08)"}`, borderRadius: 8, padding: "10px 14px", minWidth: 180 }}>
+                    {[match.home, match.away].map((team, ti) => {
+                      const isWinner = match.winner?.name === team.name;
+                      const isLoser = match.winner && !isWinner;
+                      return (
+                        <div key={ti} style={{ display: "flex", alignItems: "center", gap: 8, fontFamily: "'Barlow', sans-serif", fontSize: 13, opacity: isLoser ? 0.35 : 1, fontWeight: isWinner ? 700 : 400, color: isWinner ? "#DAA520" : "#ccc", padding: "3px 0" }}>
+                          <span style={{ fontSize: 16 }}>{team.flag}</span>
+                          <span>{team.name}</span>
+                          {isWinner && <span style={{ marginLeft: "auto", color: "#4ade80" }}>→</span>}
+                        </div>
+                      );
+                    })}
+                    {!match.winner && (
+                      <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 10, color: "#555", letterSpacing: 1, marginTop: 4 }}>
+                        {match.home.name === "TBD" ? "PENDING PREV ROUND" : "SELECT IN BRACKET"}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {ri < knockoutRounds.length - 1 && (
+                <div style={{ textAlign: "center", color: "rgba(184,134,11,0.3)", fontSize: 20, marginTop: 8 }}>↓</div>
+              )}
+            </div>
+          ))}
+          {champion ? (
+            <div style={{ textAlign: "center", padding: "28px 24px", background: "linear-gradient(135deg, rgba(184,134,11,0.2), rgba(255,215,0,0.08), rgba(184,134,11,0.15))", border: "2px solid rgba(218,165,32,0.5)", borderRadius: 16, marginTop: 10 }}>
+              <div style={{ fontSize: 56 }} className="trophy-glow">🏆</div>
+              <div className="section-title" style={{ fontSize: 32, marginTop: 8 }}>YOUR PREDICTED CHAMPION</div>
+              <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 48, marginTop: 10 }}>{champion.flag}</div>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 40, color: "#FFD700", letterSpacing: 6, marginTop: 6 }}>{champion.name}</div>
+              <div style={{ fontFamily: "'Barlow', sans-serif", fontSize: 14, color: "rgba(218,165,32,0.6)", marginTop: 8, letterSpacing: 2 }}>2026 FIFA WORLD CUP WINNER</div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", fontFamily: "'Barlow', sans-serif", color: "#555", fontSize: 14, padding: 20 }}>
+              Complete the bracket to reveal your predicted champion 🏆
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{ textAlign: "center", padding: "16px", fontFamily: "'Barlow', sans-serif", fontSize: 11, color: "rgba(255,255,255,0.15)", letterSpacing: 1, borderTop: "1px solid rgba(184,134,11,0.1)", marginTop: 20 }}>
+        FIFA WORLD CUP 2026 · USA · CANADA · MEXICO · 48 TEAMS · 104 MATCHES
+      </div>
+    </div>
+  );
+}
