@@ -1,2 +1,2 @@
-# Worldcup-predictor
-WorldCup
+Econometrics
+stats
